@@ -350,7 +350,7 @@ func many(iters, round int, core bool, s *Value, p *Pruner, noRebuild bool) {
 		patterns[i] = string(patternjs)
 		if true {
 			fmt.Printf("data,event,%s,%d,%d,%s\n", impl, i, round, eventjs)
-			fmt.Printf("data,pattern,%s,%d,%d,%s\n", impl, i, round, eventjs)
+			fmt.Printf("data,pattern,%s,%d,%d,%s\n", impl, i, round, patternjs)
 		}
 		fmt.Printf("dim,event,%s,%d,%d,%s\n", impl, i, round, ComputeDims(string(eventjs)).CSV())
 		fmt.Printf("dim,pattern,%s,%d,%d,%s\n", impl, i, round, ComputeDims(string(patternjs)).CSV())
