@@ -56,7 +56,7 @@ func main() {
 		},
 	}
 
-	prune := &Pruner{
+	trimmer := &Trimmer{
 		Map:   0.5,
 		Array: 0.5,
 	}
@@ -74,8 +74,8 @@ func main() {
 
 	flag.Float64Var(&spec.Decays.Map, "map-decay", spec.Decays.Map, "map decay")
 	flag.Float64Var(&spec.Decays.Array, "array-decay", spec.Decays.Array, "array decay")
-	flag.Float64Var(&prune.Map, "prune-map", prune.Map, "prune map rate")
-	flag.Float64Var(&prune.Array, "prune-array", prune.Array, "prune array rate")
+	flag.Float64Var(&trimmer.Map, "prune-map", trimmer.Map, "prune map rate")
+	flag.Float64Var(&trimmer.Array, "prune-array", trimmer.Array, "prune array rate")
 
 	flag.Parse()
 
@@ -97,7 +97,7 @@ func main() {
 	for i := *from; i <= *to; i += *step {
 		for j := 0; j < *repeat; j++ {
 			runtime.GC()
-			many(i, j, spec, prune, m, *noRebuild)
+			many(i, j, spec, trimmer, m, *noRebuild)
 		}
 	}
 }
@@ -219,12 +219,12 @@ func (s *Value) Sample(decays *Decays) interface{} {
 	return s.Strings.Sample()
 }
 
-type Pruner struct {
+type Trimmer struct {
 	Map   float64
 	Array float64
 }
 
-func (p *Pruner) Prune(x interface{}) interface{} {
+func (p *Trimmer) Trim(x interface{}) interface{} {
 	switch vv := x.(type) {
 	case map[string]interface{}:
 		acc := make(map[string]interface{})
@@ -232,11 +232,11 @@ func (p *Pruner) Prune(x interface{}) interface{} {
 			if rand.Float64() < p.Map {
 				continue
 			}
-			acc[k] = p.Prune(v)
+			acc[k] = p.Trim(v)
 		}
 		if len(acc) == 0 {
 			for k, v := range vv {
-				acc[k] = p.Prune(v)
+				acc[k] = p.Trim(v)
 				break
 			}
 		}
@@ -247,7 +247,7 @@ func (p *Pruner) Prune(x interface{}) interface{} {
 			if rand.Float64() < p.Array {
 				continue
 			}
-			acc = append(acc, p.Prune(v))
+			acc = append(acc, p.Trim(v))
 		}
 		return acc
 	default:
@@ -301,7 +301,7 @@ func Arrayify(x interface{}) interface{} {
 	}
 }
 
-func many(iters, round int, s *Value, p *Pruner, m quamina.Matcher, noRebuild bool) {
+func many(iters, round int, s *Value, p *Trimmer, m quamina.Matcher, noRebuild bool) {
 
 	var (
 		events          = make(map[int]string, iters)
@@ -326,13 +326,13 @@ func many(iters, round int, s *Value, p *Pruner, m quamina.Matcher, noRebuild bo
 			// log.Printf("not attempting a %T event: %s", event, eventjs)
 			continue
 		}
-		pruned := p.Prune(event)
-		// prunedjs, err := json.MarshalIndent(&pruned, "", "  ")
+		trimmed := p.Trim(event)
+		// trimmedjs, err := json.MarshalIndent(&trimmed, "", "  ")
 		// if err != nil {
 		// 	log.Fatal(err)
 		// }
 
-		pattern := Arrayify(pruned)
+		pattern := Arrayify(trimmed)
 		patternjs, err := json.Marshal(&pattern)
 		if err != nil {
 			log.Fatal(err)
@@ -345,7 +345,7 @@ func many(iters, round int, s *Value, p *Pruner, m quamina.Matcher, noRebuild bo
 		}
 
 		if err := m.AddPattern(i, string(patternjs)); err != nil {
-			// log.Printf("sad pattern %d %s: %v (pruned: %s)", i, patternjs, err, prunedjs)
+			// log.Printf("sad pattern %d %s: %v (trimmed: %s)", i, patternjs, err, trimmedjs)
 			continue
 		}
 

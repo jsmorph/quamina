@@ -60,11 +60,11 @@ func TestGen(t *testing.T) {
 	}
 	fmt.Printf("event %s\n", js)
 
-	pruner := &Pruner{
+	trimmer := &Trimmer{
 		Map:   0.5,
 		Array: 0.5,
 	}
-	x = pruner.Prune(x)
+	x = trimmer.Trim(x)
 	js, err = json.MarshalIndent(&x, "", "  ")
 	if err != nil {
 		t.Fatal(err)
