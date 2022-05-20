@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestFoo(t *testing.T) {
+func TestDims(t *testing.T) {
 	s := `{"drhtuaiz":-39,"xiylvbnxhkpmmidcp":{"loeohqs":[92,-80,"wyuolcwcbdixvddtwgqoyukjrvsk",-49],"lvnd":[["ffjugczdbuciuubbqbokrzuow"],[-94,"wxyftndvcsmjrvp",0,-35],[[92]]],"nafaouhyiyawrpjam":-2}}`
 
 	fmt.Printf("%#v\n", ComputeDims(s))

@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"time"
 
+	quamina "quamina/lib"
 	"quamina/pruner"
 )
 
@@ -55,7 +56,7 @@ func main() {
 		},
 	}
 
-	pruner := &Pruner{
+	prune := &Pruner{
 		Map:   0.5,
 		Array: 0.5,
 	}
@@ -73,8 +74,8 @@ func main() {
 
 	flag.Float64Var(&spec.Decays.Map, "map-decay", spec.Decays.Map, "map decay")
 	flag.Float64Var(&spec.Decays.Array, "array-decay", spec.Decays.Array, "array decay")
-	flag.Float64Var(&pruner.Map, "prune-map", pruner.Map, "prune map rate")
-	flag.Float64Var(&pruner.Array, "prune-array", pruner.Array, "prune array rate")
+	flag.Float64Var(&prune.Map, "prune-map", prune.Map, "prune map rate")
+	flag.Float64Var(&prune.Array, "prune-array", prune.Array, "prune array rate")
 
 	flag.Parse()
 
@@ -86,10 +87,17 @@ func main() {
 		fmt.Printf("dim,kind,impl,n,round,%s\n", DimsCSVHeader)
 	}
 
+	var m quamina.Matcher
+	if *core {
+		m = quamina.NewCoreMatcher()
+	} else {
+		m = pruner.NewMatcher(nil)
+	}
+
 	for i := *from; i <= *to; i += *step {
 		for j := 0; j < *repeat; j++ {
 			runtime.GC()
-			many(i, j, *core, spec, pruner, *noRebuild)
+			many(i, j, spec, prune, m, *noRebuild)
 		}
 	}
 }
@@ -293,22 +301,17 @@ func Arrayify(x interface{}) interface{} {
 	}
 }
 
-func many(iters, round int, core bool, s *Value, p *Pruner, noRebuild bool) {
+func many(iters, round int, s *Value, p *Pruner, m quamina.Matcher, noRebuild bool) {
 
 	var (
-		m        PatternIndex
-		events   = make(map[int]string, iters)
-		patterns = make(map[int]string, iters)
-		impl     string
+		events          = make(map[int]string, iters)
+		patterns        = make(map[int]string, iters)
+		impl            string
+		pruner, pruning = m.(*pruner.Matcher)
 	)
 
-	if core {
-		m = NewCoreMatcher()
-		impl = "core"
-	} else {
-		m = pruner.NewMatcher(nil)
-		m.(*pruner.Matcher).DisableRebuild()
-		impl = "pruner"
+	if pruning {
+		pruner.DisableRebuild()
 	}
 
 	i := 0
@@ -394,7 +397,7 @@ EVENTS:
 	if !noRebuild {
 		runtime.GC()
 		then = time.Now()
-		m.Rebuild(true)
+		pruner.Rebuild(true)
 		fmt.Printf("matcher,rebuild,%s,%d,%d,%f\n", impl, iters, round, time.Now().Sub(then).Seconds())
 	}
 
