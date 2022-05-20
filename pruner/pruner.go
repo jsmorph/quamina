@@ -42,29 +42,29 @@ type Stats struct {
 	RebuildPurged int
 }
 
-// Matcher provides DelPattern on top of quamina.Matcher.
+// Matcher provides DeletePattern on top of quamina.Matcher.
 //
 // Matcher maintains the set of live patterns, and it will rebuild the
-// underlying matcher synchronously (currently) periodically sduring
-// standard operations (AddPattern, DelPattern, MatchesForJSONEvent).
+// underlying matcher synchronously periodically during standard
+// operations (AddPattern, DeletePattern, MatchesForFields).
 //
 // Roughly speaking, the current rebuild policy automatically rebuilds
 // the index when the ratio of filtered patterns to emitted patterns
 // exceeds 0.2 (and if there's been some traffic).
 //
-// An application can call Rebuild to force a rebuild at any any.  See
-// Stats() to obtain some useful statistics about the matcher.
+// An application can call Rebuild to force a rebuild at any time.
+// See Stats() to obtain some useful statistics about the matcher.
 //
 // Eventually automatically-invoked rebuild policies might be
 // pluggable.
 type Matcher struct {
 	// Matcher is the underlying matcher that does the hard work.
-	//
-	// Matcher should maybe not be public.
-	*quamina.Matcher
+	Matcher *quamina.CoreMatcher
+
+	// Maybe Matcher should maybe not be embedded or public.
 
 	// live is live set of patterns.
-	live State
+	live LivePatternsState
 
 	stats Stats
 
@@ -77,7 +77,7 @@ type Matcher struct {
 	// lock protectes the pointer the underlying Matcher as well as stats.
 	//
 	// The Matcher pointer is updated after a successful Rebuild.
-	// Stats are updated by Add, Del, and Rebuild.
+	// Stats are updated by Add, Delete, and Rebuild.
 	lock sync.RWMutex
 }
 
@@ -107,19 +107,27 @@ func newTooMuchFiltering(ratio float64, min int64) *tooMuchFiltering {
 }
 
 func (t *tooMuchFiltering) Rebuild(added bool, s *Stats) bool {
+
 	if added {
 		// No need to think when we're adding a pattern since
 		// that operation cannot result in an increase of
-		// filtered patterns -- I think.
+		// filtered patterns.
 		return false
 	}
 
+	// If we haven't seen enough patterns emitted by the core
+	// Matcher, don't rebuild.
 	if s.Emitted+s.Filtered < t.MinAction {
 		return false
 	}
 
+	// We won't rebuild if nothing's been emitted yet.
+	//
+	// In isolation, this heuristic is arguable, but for this
+	// policy we need it.  Otherwise we'll divide by zero, and
+	// nobody wants that.
 	if s.Emitted == 0 {
-		return true
+		return false
 	}
 
 	var (
@@ -141,31 +149,32 @@ func (m *Matcher) DisableRebuild() {
 // rebuildTrigger provides a way to control when rebuilds are
 // automatically triggered during standard operations.
 //
-// Currently an AddPattern, DelPattern, or MatchesForJSONEvent can
+// Currently an AddPattern, DeletePattern, or MatchesForFields can
 // trigger a rebuild.  When a rebuild is triggered, it's executed
-// synchronous, the the Add/Del method doesn't return until the
+// synchronous, the the Add/Delete method doesn't return until the
 // rebuild is complete.
 type rebuildTrigger interface {
 	// Rebuild should return true to trigger a rebuild.
 	//
-	// This method is called by AddPattern and DelPattern.  added
-	// is true when called by AddPattern; false otherwise. These
-	// methods do not return until the rebuild is complete, so
-	// beware.
+	// This method is called by AddPattern and DeletePattern.
+	// added is true when called by AddPattern; false
+	// otherwise. These methods do not return until the rebuild is
+	// complete, so beware.
 	Rebuild(added bool, s *Stats) bool
 }
 
 // NewMatcher does what you'd expect.
 //
-// The State defaults to MemState.
-func NewMatcher(s State) *Matcher {
+// The LivePatternsState defaults to MemState.
+func NewMatcher(s LivePatternsState) *Matcher {
 	if s == nil {
 		s = NewMemState()
 	}
+	trigger := *defaultRebuildTrigger // Copy
 	return &Matcher{
-		Matcher:        quamina.NewMatcher(),
+		Matcher:        quamina.NewCoreMatcher(),
 		live:           s,
-		rebuildTrigger: defaultRebuildTrigger,
+		rebuildTrigger: &trigger,
 	}
 }
 
@@ -190,7 +199,7 @@ func (m *Matcher) maybeRebuild(added bool) error {
 func (m *Matcher) AddPattern(x quamina.X, pat string) error {
 	var err error
 
-	// Do we m.live.Add first, do we m.Matcher.AddPattern first?
+	// Do we m.live.Add first or do we m.Matcher.AddPattern first?
 	if err = m.Matcher.AddPattern(x, pat); err == nil {
 		m.lock.Lock()
 		m.stats.Added++
@@ -206,15 +215,34 @@ func (m *Matcher) AddPattern(x quamina.X, pat string) error {
 	return err
 }
 
+// NewFJ just calls quamina.FJ.
+func NewFJ(m *Matcher) quamina.Flattener {
+	return quamina.NewFJ(m.Matcher)
+}
+
+// NewFJ calls quamina.NewFJ with this Matcher's core quamina.Matcher
+func (m *Matcher) NewFJ() quamina.Flattener {
+	return quamina.NewFJ(m.Matcher)
+}
+
 // MatchesForJSONEvent calls the underlying MatchesForJSONEvent method
 // and then maybe rebuilds the index.
 func (m *Matcher) MatchesForJSONEvent(event []byte) ([]quamina.X, error) {
-	xs, err := m.Matcher.MatchesForJSONEvent(event)
+	fs, err := m.NewFJ().Flatten(event)
+	if err != nil {
+		return nil, err
+	}
+	return m.MatchesForFields(fs)
+}
+
+func (m *Matcher) MatchesForFields(fields []quamina.Field) ([]quamina.X, error) {
+
+	xs, err := m.Matcher.MatchesForFields(fields)
 	if err != nil {
 		return nil, err
 	}
 
-	// Delove any X that isn't in the live set.
+	// Remove any X that isn't in the live set.
 
 	acc := make([]quamina.X, 0, len(xs))
 
@@ -223,20 +251,16 @@ func (m *Matcher) MatchesForJSONEvent(event []byte) ([]quamina.X, error) {
 	// read lock here.
 	var emitted, filtered int64
 	for _, x := range xs {
-		var have string
-		if have, err = m.live.Get(x); err != nil {
-			break
+		have, err := m.live.Contains(x)
+		if err != nil {
+			return nil, err
 		}
-		if have == "" {
+		if !have {
 			filtered++
 			continue
 		}
 		acc = append(acc, x)
 		emitted++
-	}
-
-	if err != nil {
-		return nil, err
 	}
 
 	m.lock.Lock()
@@ -248,21 +272,28 @@ func (m *Matcher) MatchesForJSONEvent(event []byte) ([]quamina.X, error) {
 	return acc, nil
 }
 
-// DelPattern "removes" the pattern from the index and maybe rebuilds
-// the index.
-func (m *Matcher) DelPattern(x quamina.X) (bool, error) {
-	had, err := m.live.Del(x)
+// DeletePattern "removes" the pattern from the index and maybe
+// rebuilds the index.
+//
+// The return boolean when true indicates that at least one pattern
+// for x was removed.
+func (m *Matcher) DeletePattern(x quamina.X) error {
+	// Maybe better to return (int,error) as in
+	// LivePatternStats.Delete(), or maybe just return an error
+	// and nothing else.
+
+	n, err := m.live.Delete(x)
 	if err == nil {
-		if had {
+		if 0 < n {
 			m.lock.Lock()
-			m.stats.Deleted++
-			m.stats.Live--
+			m.stats.Deleted += n
+			m.stats.Live -= n
 			m.maybeRebuild(false)
 			m.lock.Unlock()
 		}
 	}
 
-	return had, err
+	return err
 }
 
 // Rebuild rebuilds the matcher state based on only live patterns.
@@ -286,7 +317,7 @@ func (m *Matcher) rebuild(fearlessly bool) error {
 
 	var (
 		then = time.Now()
-		m1   = quamina.NewMatcher()
+		m1   = quamina.NewCoreMatcher()
 	)
 
 	if fearlessly {

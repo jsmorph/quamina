@@ -1,11 +1,14 @@
 package pruner
 
 import (
+	"bufio"
 	"fmt"
 	"log"
-	quamina "quamina/lib"
+	"os"
 	"testing"
 	"time"
+
+	quamina "quamina/lib"
 )
 
 var verbose = false
@@ -35,8 +38,9 @@ func TestBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := m.AddPattern(id, pat); err == nil {
-		t.Fatal("expected protest")
+	// It's okay to update a pattern.
+	if err := m.AddPattern(id, pat); err != nil {
+		t.Fatal(err)
 	}
 
 	got, err := m.MatchesForJSONEvent(event)
@@ -49,15 +53,11 @@ func TestBasic(t *testing.T) {
 
 	m.printStats()
 
-	if have, err := m.DelPattern(id); err != nil {
+	if err := m.DeletePattern(id); err != nil {
 		t.Fatal(err)
-	} else if !have {
-		t.Fatal(have)
 	}
-	if have, err := m.DelPattern(id); err != nil {
+	if err := m.DeletePattern(id); err != nil {
 		t.Fatal(err)
-	} else if have {
-		t.Fatal(have)
 	}
 
 	m.printStats()
@@ -91,8 +91,8 @@ func TestBasic(t *testing.T) {
 
 func TestRebuildSome(t *testing.T) {
 	var (
+		n = int(2 * defaultRebuildTrigger.MinAction)
 		m = NewMatcher(nil)
-		n = int(defaultRebuildTrigger.MinAction + 100)
 	)
 
 	populate := func() {
@@ -106,11 +106,12 @@ func TestRebuildSome(t *testing.T) {
 
 	depopulate := func() {
 		for i := 0; i < n; i += 2 {
-			if had, err := m.DelPattern(i); err != nil {
+			if err := m.DeletePattern(i); err != nil {
 				t.Fatal(err)
-			} else if !had {
-				t.Fatal(i)
 			}
+		}
+		if err := m.checkStats(); err != nil {
+			t.Fatal(err)
 		}
 	}
 
@@ -125,19 +126,36 @@ func TestRebuildSome(t *testing.T) {
 		}
 	}
 
-	t.Run("rebuuild", func(t *testing.T) {
+	queryFast := func(verify bool) {
+		f := m.NewFJ()
+		for i := 0; i < n; i++ {
+			e := fmt.Sprintf(`{"like":"tacos","want":%d}`, i)
+			fs, err := f.Flatten([]byte(e))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, err := m.MatchesForFields(fs); err != nil {
+				t.Fatal(err)
+			} else if verify && len(got) != 1 {
+				t.Fatal(got)
+			}
+		}
+	}
+
+	t.Run("rebuild", func(t *testing.T) {
 		// See a rebuild.
 		populate()
 		query(true)
 		m.printStats()
 		depopulate()
 		query(false)
+		m.printStats()
 		if s := m.Stats(); 0 == s.RebuildDuration {
 			t.Fatal(s)
 		}
 	})
 
-	t.Run("norebuuild", func(t *testing.T) {
+	t.Run("no_rebuild", func(t *testing.T) {
 		// Prevent a rebuild.
 		m = NewMatcher(nil)
 		m.DisableRebuild()
@@ -146,6 +164,17 @@ func TestRebuildSome(t *testing.T) {
 		depopulate()
 		query(false)
 		if s := m.Stats(); 0 != s.RebuildDuration {
+			t.Fatal(s)
+		}
+	})
+
+	t.Run("rebuild_after_fj", func(t *testing.T) {
+		m = NewMatcher(nil)
+		populate()
+		queryFast(false)
+		depopulate()
+		queryFast(false)
+		if s := m.Stats(); 0 == s.RebuildDuration {
 			t.Fatal(s)
 		}
 	})
@@ -161,7 +190,7 @@ func TestTriggerTooManyFilteredDenom(t *testing.T) {
 	if err := m.AddPattern(1, `{"likes":["tacos"]}`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.DelPattern(1); err != nil {
+	if err := m.DeletePattern(1); err != nil {
 		t.Fatal(err)
 	}
 	_, err := m.MatchesForJSONEvent([]byte(`{"likes":"tacos"}`))
@@ -183,12 +212,12 @@ func TestTriggerRebuild(t *testing.T) {
 		doomed  = func(id int) bool {
 			return id%2 == 0
 		}
-		printState = func() {
-			logf("state:")
-			for id, p := range m.live.(*MemState).m {
-				logf("  %v -> %s", id, p)
-			}
-		}
+		// printState = func() {
+		// 	logf("state:")
+		// 	for id, p := range m.live.(*MemState).m {
+		// 		logf("  %v -> %s", id, p)
+		// 	}
+		// }
 	)
 
 	trigger.MinAction = 5
@@ -201,13 +230,13 @@ func TestTriggerRebuild(t *testing.T) {
 		}
 
 		if doomed(i) {
-			if _, err := m.DelPattern(i); err != nil {
+			if err := m.DeletePattern(i); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 
-	printState()
+	// printState()
 	m.printStats()
 
 	for i := 0; i < n; i++ {
@@ -227,7 +256,7 @@ func TestTriggerRebuild(t *testing.T) {
 		}
 	}
 
-	printState()
+	// printState()
 	m.printStats()
 
 	s := m.Stats()
@@ -259,12 +288,12 @@ func (s *badState) Add(x quamina.X, pattern string) error {
 	return s.err
 }
 
-func (s *badState) Get(x quamina.X) (string, error) {
-	return "", s.err
+func (s *badState) Contains(x quamina.X) (bool, error) {
+	return false, s.err
 }
 
-func (s *badState) Del(x quamina.X) (bool, error) {
-	return false, s.err
+func (s *badState) Delete(x quamina.X) (int, error) {
+	return 0, s.err
 }
 
 func (s *badState) Iterate(f func(x quamina.X, pattern string) error) error {
@@ -280,7 +309,7 @@ func TestBadState(t *testing.T) {
 	if err := m.AddPattern(1, `{"likes":["queso"]}`); err == nil {
 		t.Fatal("expected error")
 	}
-	if _, err := m.DelPattern(1); err == nil {
+	if err := m.DeletePattern(1); err == nil {
 		t.Fatal("expected error")
 	}
 	if err := m.Rebuild(false); err == nil {
@@ -320,5 +349,185 @@ func TestUnsetRebuildTrigger(t *testing.T) {
 	m.rebuildTrigger = nil
 	if err := m.maybeRebuild(false); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestFlattener(t *testing.T) {
+	var (
+		m = NewMatcher(nil)
+		f = NewFJ(m) // Variation for test coverage.
+	)
+
+	if err := m.AddPattern(1, `{"wants":["queso"]}`); err != nil {
+		t.Fatal(err)
+	}
+
+	fs, err := f.Flatten([]byte(`{"wants":"queso"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.MatchesForFields(fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatal(got)
+	}
+	if got[0] != 1 {
+		t.Fatal(got)
+	}
+
+}
+
+func TestMultiplePatternsWithSameId(t *testing.T) {
+	var (
+		m              = NewMatcher(nil)
+		id interface{} = 1
+	)
+
+	if err := m.AddPattern(id, `{"enjoys":["queso"]}`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.AddPattern(id, `{"needs":["chips"]}`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.Rebuild(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// If we weren't able to remember that both patterns are still
+	// live, then one of the two checks below will fail.  In that
+	// case, we can't tell which one in advance (because Go map
+	// iteration order is not specified).
+
+	xs, err := m.MatchesForJSONEvent([]byte(`{"enjoys":"queso"}`))
+
+	check := func() {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(xs) != id {
+			t.Fatal(xs)
+		}
+		if xs[0] != id {
+			t.Fatal(xs)
+		}
+	}
+
+	check()
+
+	xs, err = m.MatchesForJSONEvent([]byte(`{"needs":"chips"}`))
+
+	check()
+
+	s := m.Stats()
+
+	if s.Live != 2 {
+		t.Fatal(s.Live)
+	}
+
+	if err := m.DeletePattern(id); err != nil {
+		t.Fatal(err)
+	}
+
+	s = m.Stats()
+
+	if s.Live != 0 {
+		t.Fatal(s.Live)
+	}
+
+	if s.Deleted != 2 {
+		t.Fatal(s.Deleted)
+	}
+
+}
+
+func BenchmarkCityLotsCore(b *testing.B) {
+	benchmarkCityLots(b, quamina.NewCoreMatcher())
+}
+
+func BenchmarkCityLotsPruner(b *testing.B) {
+	benchmarkCityLots(b, NewMatcher(nil))
+}
+
+// benchmarkCityLots is distilled from TestCityLots.
+func benchmarkCityLots(b *testing.B, m quamina.Matcher) {
+
+	oneMeg := 1024 * 1024
+	file, err := os.Open("../test_data/citylots.jlines")
+	if err != nil {
+		b.Errorf("Can't open file %s", err)
+	}
+	defer file.Close()
+
+	patterns := []string{
+		`{ "properties": { "STREET": [ "CRANLEIGH" ] } }`,
+		`{ "properties": { "STREET": [ "17TH" ], "ODD_EVEN": [ "E"] } }`,
+		`{ "geometry": { "coordinates": [ 37.807807921694092 ] } }`,
+		`{ "properties": { "MAPBLKLOT": ["0011008"], "BLKLOT": ["0011008"]},  "geometry": { "coordinates": [ 37.807807921694092 ] } } `,
+	}
+	names := []string{
+		"CRANLEIGH",
+		"17TH Even",
+		"Geometry",
+		"0011008",
+	}
+
+	scanner := bufio.NewScanner(file)
+	buf := make([]byte, oneMeg)
+	scanner.Buffer(buf, oneMeg)
+
+	var fj quamina.Flattener
+	switch vv := m.(type) {
+	case *Matcher:
+		fj = quamina.NewFJ(vv.Matcher)
+		vv.DisableRebuild()
+	case *quamina.CoreMatcher:
+		fj = quamina.NewFJ(vv)
+	default:
+		b.Fatalf("%T", vv)
+	}
+
+	for i := range names {
+		err = m.AddPattern(names[i], patterns[i])
+		if err != nil {
+			b.Errorf("AddPattern error %s", err)
+		}
+	}
+	results := make(map[quamina.X]int)
+
+	lineCount := 0
+	var lines [][]byte
+	for scanner.Scan() {
+		lineCount++
+		lines = append(lines, []byte(scanner.Text()))
+	}
+	lineCount = 0
+
+	b.ResetTimer()
+
+	for _, line := range lines {
+		matches, err := fj.FlattenAndMatch(line)
+		if err != nil {
+			b.Errorf("Matches4JSON error %s on %s", err, line)
+		}
+		lineCount++
+		if lineCount == b.N {
+			break
+		}
+		for _, match := range matches {
+			count, ok := results[match]
+			if !ok {
+				count = 0
+			}
+			results[match] = count + 1
+		}
+	}
+
+	err = scanner.Err()
+	if err != nil {
+		b.Errorf("Scanner error %s", err)
 	}
 }
