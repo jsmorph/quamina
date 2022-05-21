@@ -177,13 +177,17 @@ type Op struct {
 	Match  string    `json:",omitempty"`
 }
 
-func (o *Op) Exec(c *Corpus, m quamina.Matcher, printDims bool) error {
+func (o *Op) Exec(c *Corpus, m quamina.Matcher, printDims, printData bool) error {
 	if o.Add != "" {
 		if printDims {
 			d := ComputeDims(o.Add)
 			fmt.Printf("dims,add,%s\n", d.CSV())
 		}
-		return m.AddPattern(rand.Intn(c.Spec.PatternIds), o.Add)
+		p := rand.Intn(c.Spec.PatternIds)
+		if printData {
+			fmt.Printf("data,addPattern,%s\n", JSON(o.Add))
+		}
+		return m.AddPattern(p, o.Add)
 	}
 	if o.Delete != nil {
 		return m.DeletePattern(o.Delete)
@@ -191,6 +195,9 @@ func (o *Op) Exec(c *Corpus, m quamina.Matcher, printDims bool) error {
 	if printDims {
 		d := ComputeDims(o.Match)
 		fmt.Printf("dims,match,%s\n", d.CSV())
+	}
+	if printData {
+		fmt.Printf("data,matchEvent,%s\n", JSON(o.Match))
 	}
 	_, err := m.MatchesForJSONEvent([]byte(o.Match))
 	return err
@@ -230,6 +237,7 @@ type Exec struct {
 	Goroutines int
 	Ops        int
 	PrintDims  bool
+	PrintData  bool
 }
 
 func (e *Exec) Copy() *Exec {
@@ -258,6 +266,9 @@ func (s *CorpusSpec) Exec(e *Exec) (time.Duration, *Corpus, error) {
 	if e.PrintDims {
 		fmt.Printf("dims,op,%s\n", DimsCSVHeader)
 	}
+	if e.PrintDims {
+		fmt.Printf("data,op,%s\n", DimsCSVHeader)
+	}
 	wg := &sync.WaitGroup{}
 
 	then := time.Now()
@@ -269,7 +280,7 @@ func (s *CorpusSpec) Exec(e *Exec) (time.Duration, *Corpus, error) {
 			for 0 < want {
 				i := rand.Intn(len(ops))
 				o := ops[i]
-				if err := o.Exec(corpus, e.Matcher, e.PrintDims); err != nil {
+				if err := o.Exec(corpus, e.Matcher, e.PrintDims, e.PrintData); err != nil {
 					continue
 					// ToDo: limit
 				}
