@@ -1,0 +1,29 @@
+package gen
+
+import (
+	"fmt"
+	"testing"
+
+	quamina "quamina/lib"
+	"quamina/pruner"
+)
+
+func TestCorpus(t *testing.T) {
+	s, e := Defaults()
+
+	e.Matcher = quamina.NewCoreMatcher()
+
+	f := func() {
+		d, _, err := s.Exec(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Printf("%T elapsed %s\n", e.Matcher, d)
+	}
+
+	f()
+
+	e.Matcher = pruner.NewMatcher(nil)
+
+	f()
+}
