@@ -6,7 +6,7 @@ import (
 	"log"
 	"testing"
 
-	quamina "quamina/lib"
+	quamina "github.com/timbray/quamina/core"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"

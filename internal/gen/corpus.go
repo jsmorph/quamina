@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	quamina "quamina/lib"
-	"quamina/pruner"
+	quamina "github.com/timbray/quamina/core"
+	"github.com/timbray/quamina/pruner"
 )
 
 type nothing struct{}

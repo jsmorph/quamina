@@ -3,7 +3,7 @@ package gen
 import (
 	"runtime"
 
-	"quamina/pruner"
+	"github.com/timbray/quamina/pruner"
 )
 
 var (
