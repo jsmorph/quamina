@@ -46,7 +46,8 @@ func TestMatcher(t *testing.T) {
 		matches, err := EventBridgeMatches(ctx, eb, p, e)
 		if err != nil {
 			log.Printf("aws error %v", err)
-			return false, false
+			t.Skip(err)
+			// return false, false
 		}
 		return matches, true
 	}
