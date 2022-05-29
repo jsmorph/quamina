@@ -1,10 +1,8 @@
 package core
 
 import (
-	"bufio"
 	"fmt"
 	"math/rand"
-	"os"
 	"testing"
 	"time"
 )
@@ -39,13 +37,7 @@ func TestConcurrency(t *testing.T) {
 	// I was initially surprised that adding 860 or so changes to the automaton while it's running doesn't seem to
 	//  cause any decrease in performance. But I guess it splits out very cleanly onto another core and really
 	//  doesn't steal any resources from the thread doing the Match calls
-	file, err := os.Open("../testdata/citylots.jlines")
-	if err != nil {
-		t.Error("Can't open file: " + err.Error())
-	}
-	defer func(file *os.File) {
-		_ = file.Close()
-	}(file)
+	lines := getCityLotsLines(t)
 
 	patterns := []string{
 		`{ "properties": { "STREET": [ "CRANLEIGH" ] } }`,
@@ -69,10 +61,7 @@ func TestConcurrency(t *testing.T) {
 		"0011008":    1,
 	}
 
-	scanner := bufio.NewScanner(file)
-	buf := make([]byte, oneMeg)
-	scanner.Buffer(buf, oneMeg)
-
+	var err error
 	m := NewCoreMatcher()
 	for i := range names {
 		err = m.AddPattern(names[i], patterns[i])
@@ -82,14 +71,8 @@ func TestConcurrency(t *testing.T) {
 	}
 	results := make(map[X]int)
 
-	lineCount := 0
-	var lines [][]byte
-	for scanner.Scan() {
-		lineCount++
-		lines = append(lines, []byte(scanner.Text()))
-	}
 	use37 := true
-	lineCount = 0
+	lineCount := 0
 	before := time.Now()
 	ch := make(chan string, 1000)
 	sent := 0
@@ -113,14 +96,9 @@ func TestConcurrency(t *testing.T) {
 		}
 	}
 
-	elapsed := float64(time.Now().Sub(before).Milliseconds())
+	elapsed := float64(time.Since(before).Milliseconds())
 	perSecond := float64(lineCount) / (elapsed / 1000.0)
 	fmt.Printf("\n%.2f matches/second with updates\n\n", perSecond)
-
-	err = scanner.Err()
-	if err != nil {
-		t.Error("Scanner error: " + err.Error())
-	}
 
 	if len(results) != len(wanted) {
 		t.Errorf("got %d results, wanted %d", len(results), len(wanted))
@@ -132,7 +110,6 @@ func TestConcurrency(t *testing.T) {
 	}
 
 	// now we go back and make sure that all those AddPattern calls actually made it into the Matcher
-	close(ch)
 	for i := 0; i < sent; i++ {
 		val := <-ch
 		var event string
@@ -150,4 +127,5 @@ func TestConcurrency(t *testing.T) {
 			t.Error("problem with: " + val)
 		}
 	}
+	close(ch)
 }

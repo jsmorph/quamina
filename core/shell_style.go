@@ -40,7 +40,7 @@ func readShellStyleSpecial(pb *patternBuild, valsIn []typedVal) (pathVals []type
 	switch tt := t.(type) {
 	case json.Delim:
 		if tt != '}' {
-			err = errors.New(fmt.Sprintf("invalid character %v in 'shellstyle' pattern", tt))
+			err = fmt.Errorf("invalid character %v in 'shellstyle' pattern", tt)
 		}
 	default:
 		err = errors.New("trailing garbage in shellstyle pattern")
@@ -51,8 +51,8 @@ func readShellStyleSpecial(pb *patternBuild, valsIn []typedVal) (pathVals []type
 
 // makeShellStyleAutomaton - recognize a "-delimited string containing one '*' glob.
 // TODO: Make this recursive like makeStringAutomaton
-func makeShellStyleAutomaton(val []byte, useThisTransition *fieldMatcher) (start *smallTable[NSL], nextField *fieldMatcher) {
-	table := newSmallTable[NSL]()
+func makeShellStyleAutomaton(val []byte, useThisTransition *fieldMatcher) (start *smallTable[*nfaStepList], nextField *fieldMatcher) {
+	table := newSmallTable[*nfaStepList]()
 	start = table
 	if useThisTransition != nil {
 		nextField = useThisTransition
@@ -73,31 +73,31 @@ func makeShellStyleAutomaton(val []byte, useThisTransition *fieldMatcher) (start
 			//  we know the trailing '"' will be there because of JSON syntax.
 			// TODO: This doesn't even need to be an NFA
 			if i == len(val)-2 {
-				step := &nfaStep{table: newSmallTable[NSL](), fieldTransitions: []*fieldMatcher{nextField}}
+				step := &nfaStep{table: newSmallTable[*nfaStepList](), fieldTransitions: []*fieldMatcher{nextField}}
 				list := lister.getList(step)
-				table.addRangeSteps(0, ByteCeiling, list)
+				table.addRangeSteps(0, byteCeiling, list)
 				return
 			}
 
 			// loop back on everything
 			globStep = &nfaStep{table: table}
-			table.addRangeSteps(0, ByteCeiling, lister.getList(globStep))
+			table.addRangeSteps(0, byteCeiling, lister.getList(globStep))
 
 			// escape the glob on the next char from the pattern - remember the byte and the state escaped to
 			i++
 			globExitByte = val[i]
-			globExitStep = &nfaStep{table: newSmallTable[NSL]()}
+			globExitStep = &nfaStep{table: newSmallTable[*nfaStepList]()}
 			// escape the glob
 			table.addByteStep(globExitByte, lister.getList(globExitStep))
 			table = globExitStep.table
 		} else {
-			nextStep := &nfaStep{table: newSmallTable[NSL]()}
+			nextStep := &nfaStep{table: newSmallTable[*nfaStepList]()}
 
 			// we're going to move forward on 'ch'.  On anything else, we leave it at nil or - if we've passed
 			//  a glob, loop back to the glob stae.  if 'ch' is also the glob exit byte, also put in a transfer
 			//  back to the glob exist state
 			if globExitStep != nil {
-				table.addRangeSteps(0, ByteCeiling, lister.getList(globStep))
+				table.addRangeSteps(0, byteCeiling, lister.getList(globStep))
 				if ch == globExitByte {
 					table.addByteStep(ch, lister.getList(globExitStep, nextStep))
 				} else {
@@ -112,13 +112,13 @@ func makeShellStyleAutomaton(val []byte, useThisTransition *fieldMatcher) (start
 		i++
 	}
 
-	lastStep := &nfaStep{table: newSmallTable[NSL](), fieldTransitions: []*fieldMatcher{nextField}}
+	lastStep := &nfaStep{table: newSmallTable[*nfaStepList](), fieldTransitions: []*fieldMatcher{nextField}}
 	if globExitStep != nil {
-		table.addRangeSteps(0, ByteCeiling, lister.getList(globStep))
+		table.addRangeSteps(0, byteCeiling, lister.getList(globStep))
 		table.addByteStep(globExitByte, lister.getList(globExitStep))
-		table.addByteStep(ValueTerminator, lister.getList(lastStep))
+		table.addByteStep(valueTerminator, lister.getList(lastStep))
 	} else {
-		table.addByteStep(ValueTerminator, lister.getList(lastStep))
+		table.addByteStep(valueTerminator, lister.getList(lastStep))
 	}
 	return
 }

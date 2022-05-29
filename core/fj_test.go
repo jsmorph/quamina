@@ -42,7 +42,7 @@ func TestFJBasic(t *testing.T) {
 
 	justAF := fakeMatcher("a", "f")
 	f = NewFJ(justAF)
-	list, err = f.Flatten([]byte(j))
+	list, _ = f.Flatten([]byte(j))
 	wantedPaths = []string{"a", "f", "f"}
 	wantedVals = []string{"1", "33", "\"x\""}
 	for i, field := range list {
@@ -145,7 +145,7 @@ func testTrackerSelection(fj Flattener, label string, filename string, wantedPat
 func fakeMatcher(segs ...string) *CoreMatcher {
 	m := NewCoreMatcher()
 	for _, seg := range segs {
-		m.namesUsed[seg] = true
+		m.start().namesUsed[seg] = true
 	}
 	return m
 }

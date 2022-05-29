@@ -1,5 +1,16 @@
 # Quamina
 
+[![Tests](https://github.com/timbray/quamina/actions/workflows/go-unit-tests.yaml/badge.svg)](https://github.com/timbray/quamina/actions/workflows/go-unit-tests.yaml)
+[![Latest Release](https://img.shields.io/github/release/timbray/quamina.svg?logo=github&style=flat-square)](https://github.com/timbray/quamina/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/timbray/quamina)](https://goreportcard.com/report/github.com/timbray/quamina)
+[![timbray/quamina](https://img.shields.io/github/go-mod/go-version/timbray/quamina)](https://github.com/timbray/quamina)
+[![Go Reference](https://pkg.go.dev/badge/github.com/timbray/quamina.svg)](https://pkg.go.dev/github.com/timbray/quamina)
+
+<!-- 
+TODO: @timbray consider enabling code coverage
+[![codecov](https://codecov.io/gh/timbray/quamina/branch/main/graph/badge.svg?token=TC7MW723JO)](https://codecov.io/gh/timbray/quamina) 
+-->
+
 ### Fast pattern-matching library
 
 Quamina provides APIs to create an interface called 
@@ -7,6 +18,14 @@ a **Matcher**,
 add multiple **Patterns** to it, and then query JSON blobs
 called **Events** to discover which of the patterns match 
 the fields in the event.
+
+### Status
+
+As of late May 2022, Quamina has a lot of unit tests and
+they're all passing.  We are working on getting the 
+GitHub-based CI/CD nailed down and stable.  We have not
+pressed the “release” button, so we reserve the right 
+to change APIs.
 
 ### Patterns
 
@@ -105,17 +124,15 @@ but an AND on the field names.
 
 Note that the `shellstyle` Patterns can include only
 one `*` character. The architecture probably allows
-support for a larger subset of regular expressions
-but currently,  the testing for just the single -`*`
-patterns is a bit lacking.
+support for a larger subset of regular expressions, 
+eventually.
 
 Number matching is weak - the number has to appear 
 exactly the same in the pattern and the event. I.e.,
 Quamina doesn't know that 35, 35.000, and 3.5e1 are the
-same number.
-
-There's a fix for this in the code which is commented
-out because it causes a significant performance penalty.
+same number. There's a fix for this in the code which 
+is commented out because it causes a 
+significant performance penalty.
 
 ## Flattening and Matching
 
@@ -176,8 +193,17 @@ features.
 ```go
 func NewCoreMatcher() *Matcher
 ```
+```go
+func pruner.NewMatcher() *Matcher
+```
 
-Creates a new Matcher, takes no arguments.
+Create new Matchers, take no arguments. The difference
+is that the `pruner.NewMatcher` version supports the
+`DeletePattern()` API. Be careful: It occasionally
+rebuilds the Matcher in stop-the-world fashion, so if you
+delete lots of Patterns in a large Matcher you may 
+encounter occasional elevated latencies.
+
 ```go
 func (m *Matcher) AddPattern(x X, patternJSON string) error
 ```
@@ -194,8 +220,9 @@ The `error` return is used to signal invalid Pattern
 structure, which could be bad UTF-8 or malformed JSON 
 or leaf values which are not provided as arrays.
 
-As many Patterns as desired can be added to a Matcher
-but at this time there is no capability of removing any.
+As many Patterns as desired can be added to a Matcher. 
+The `CoreMatcher` type does not support `DeletePattern()`
+but `pruner.Matcher` does.
 
 The `AddPattern` call is single-threaded; if multiple
 threads call it, they will block and execute sequentially.
@@ -214,15 +241,20 @@ The `[]X` return slice may be empty if none of the Patterns
 match the provided Event. 
 
 ```go
-func (m *Matcher) MatchesForFields([]Field) []X
+func (m *Matcher) MatchesForFields([]Field) ([]X, error)
 ```
 Performs the functions of `MatchesForJSON` on an 
 Event which has been flattened into a list of `Field`
-instances.
+instances.  At the moment, `CoreMatcher` only returns
+an error if the `[]Field` argument is nil. `pruner.Matcher`
+can return an error if it suffers a failure in its 
+Pattern storage.
 
-`MatchesForJSONEvent` is thread-safe. Many threads may
+These matching calls are thread-safe. Many threads may
 be executing it concurrently, even while `AddPattern` is
-also executing.
+also executing.  There is a significant performance 
+penalty if there is a high rate of `AddPattern` in
+combination with matching.
 
 ```go
 func NewFJ(*Matcher) Flattener
@@ -232,7 +264,7 @@ Creates a new JSON-specific Flattener.
 func (fj *FJ) Flatten([]byte event) []Field
 ```
 Transforms an event, which must be JSON object
-encoded in UTF-8 into a list of `Field` instances.
+encoded in UTF-8, into a list of `Field` instances.
 
 ```go
 func (fj *FJ) FlattenAndMatch([]byte event) ([]X, error)
@@ -274,3 +306,11 @@ Guyanese slave from Africa and father of Jack Gladstone.
 He and his son were involved in the Demerara rebellion 
 of 1823, one of the largest slave revolts in the British 
 colonies before slavery was abolished.
+
+### Credits
+
+@timbray: v0.1 and patches.
+
+@jsmorph: `Pruner` and concurrency testing.
+
+@embano1: CI/CD and project structure.

@@ -6,8 +6,7 @@ import (
 )
 
 func TestBasicMatching(t *testing.T) {
-	var x X
-	x = X("testing")
+	var x X = X("testing")
 	pattern := `{"a": [1, 2], "b": [1, "3"]}`
 	m := NewCoreMatcher()
 	err := m.AddPattern(x, pattern)
@@ -35,7 +34,7 @@ func TestBasicMatching(t *testing.T) {
 	}
 	for _, shouldNot := range shouldNotMatch {
 		var matches []X
-		matches, err = m.MatchesForJSONEvent([]byte(shouldNot))
+		matches, _ = m.MatchesForJSONEvent([]byte(shouldNot))
 		if len(matches) != 0 {
 			t.Error("Matched: " + shouldNot)
 		}
@@ -109,16 +108,15 @@ func TestExerciseMatching(t *testing.T) {
 
 func TestSimpleAddPattern(t *testing.T) {
 	// laboriously hand-check the simplest possible automaton
-	var x X
-	x = X("testing")
+	var x X = X("testing")
 	pattern := `{"a": [1, 2], "b": [1, "3"]}`
 	m := NewCoreMatcher()
 	err := m.AddPattern(x, pattern)
 	if err != nil {
 		t.Error(err.Error())
 	}
-	if len(m.namesUsed) != 2 {
-		t.Errorf("nameUsed = %d", len(m.namesUsed))
+	if len(m.start().namesUsed) != 2 {
+		t.Errorf("nameUsed = %d", len(m.start().namesUsed))
 	}
 	if !m.IsNameUsed([]byte("a")) {
 		t.Error("'a' not showing as used")
@@ -126,12 +124,12 @@ func TestSimpleAddPattern(t *testing.T) {
 	if !m.IsNameUsed([]byte("b")) {
 		t.Error("'b' not showing as used")
 	}
-	s0 := m.startState
-	if len(s0.transitions) != 1 {
-		t.Errorf("s0 trans len %d", len(s0.transitions))
+	s0 := m.start().state
+	if len(s0.fields().transitions) != 1 {
+		t.Errorf("s0 trans len %d", len(s0.fields().transitions))
 	}
 
-	_, ok := s0.transitions["a"]
+	_, ok := s0.fields().transitions["a"]
 	if !ok {
 		t.Error("No trans from start on 'a'")
 	}
