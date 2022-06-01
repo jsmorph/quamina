@@ -71,53 +71,46 @@ func (r *Router) Route(ctx context.Context, f core.Flattener, event string) erro
 		return err
 	}
 
-	cs := make(map[reflect.Value]nothing, len(xs))
-	for _, x := range xs {
-		cs[reflect.ValueOf(x.(chan string))] = na
-	}
-
 	// Maybe too fancy and slow.
 
-	var (
-		v    = reflect.ValueOf(event)
-		todo = len(cs)
-		na   = reflect.ValueOf(nil)
-		done = reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(ctx.Done()),
-		}
-	)
+	v := reflect.ValueOf(event)
 
-	for 0 < len(cs) {
-		cases := make([]reflect.SelectCase, 0, todo+2)
-		cases = append(cases, done)
+	cases := make([]reflect.SelectCase, 0, len(xs)+2)
+
+	// We can get canceled.
+	cases = append(cases, reflect.SelectCase{
+		Dir:  reflect.SelectRecv,
+		Chan: reflect.ValueOf(ctx.Done()),
+	})
+
+	// We won't wait all day.
+	cases = append(cases, reflect.SelectCase{
+		Dir:  reflect.SelectRecv,
+		Chan: reflect.ValueOf(time.NewTimer(r.patience).C),
+	})
+
+	for _, x := range xs {
 		cases = append(cases, reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(time.NewTimer(r.patience).C),
+			Dir:  reflect.SelectSend,
+			Chan: reflect.ValueOf(x.(chan string)),
+			Send: v,
 		})
-		for c := range cs {
-			if c == na {
-				continue
-			}
-			cases = append(cases, reflect.SelectCase{
-				Dir:  reflect.SelectSend,
-				Chan: c,
-				Send: v,
-			})
-		}
+	}
+
+	for todo := len(xs); 0 < todo; {
 		i, _, _ := reflect.Select(cases)
 		switch i {
 		case 0:
 			return context.Canceled
 		case 1:
 			// All of the damn consumers are slow.
+			// Do something?
+		default:
+			// Remove that case.
+			cases[i] = cases[len(cases)-1]
+			cases = cases[0 : len(cases)-1]
+			todo--
 		}
-		if _, have := cs[cases[i].Chan]; !have {
-			panic(cases[i].Chan)
-		}
-
-		delete(cs, cases[i].Chan)
-		todo--
 	}
 
 	return nil
