@@ -1,5 +1,8 @@
 package gen
 
+// A quick router sketch.  Belongs elsewhere.  Far, far from a
+// production design.
+
 import (
 	"context"
 	"reflect"
@@ -9,8 +12,16 @@ import (
 	"github.com/timbray/quamina/pruner"
 )
 
+// Router receives events and forwards them to the consumers who are
+// interested.
+//
+// When an event arrives, the router forwards that event to every
+// consumer with a pattern that matches that event.
 type Router struct {
-	m        *pruner.Matcher
+	m *pruner.Matcher
+
+	// patience should be used to identify with slow consumers
+	// when they become a problem.
 	patience time.Duration
 }
 
@@ -21,6 +32,8 @@ func NewRouter() *Router {
 	}
 }
 
+// Consume should be called by a consumer (for example a handler for a
+// new consumer session).
 func (r *Router) Consume(ctx context.Context, patterns []string, out chan string) error {
 	for i, p := range patterns {
 		if err := r.m.AddPattern(out, p); err != nil {
@@ -35,10 +48,19 @@ func (r *Router) Consume(ctx context.Context, patterns []string, out chan string
 	return nil
 }
 
+// StopConsuming should be called by the consumer when it's done.
+//
+// The router can terminate a consumer independently by closing the
+// consumer's channel.
 func (r *Router) StopConsuming(ctx context.Context, out chan string) error {
 	return r.m.DeletePattern(out)
 }
 
+// Route takes an in-bound event and forwards it to the interested
+// consumers.
+//
+// A router will typically consumer a small set of event streams
+// (ordered).  Each stream would have its own Flattener.
 func (r *Router) Route(ctx context.Context, f core.Flattener, event string) error {
 	fs, err := f.Flatten([]byte(event))
 	if err != nil {

@@ -12,15 +12,18 @@ import (
 	"github.com/timbray/quamina/core"
 )
 
+// TestRouter runs some concurrent consumers and producers who deal in
+// events and patterns randomly selected from a generated corpus.
 func TestRouter(t *testing.T) {
 	var (
 		numConsumers  = 1000
 		numForwarders = 4
 		numEvents     = 10000
-		r             = NewRouter()
-		wg            = &sync.WaitGroup{}
-		ctx, cancel   = context.WithTimeout(context.Background(), 10*time.Second)
-		forwarded     uint64
+
+		r           = NewRouter()
+		wg          = &sync.WaitGroup{}
+		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		forwarded   uint64
 
 		pause = func() {
 			ms := rand.Intn(50)
