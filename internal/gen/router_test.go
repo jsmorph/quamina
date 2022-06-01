@@ -16,16 +16,20 @@ import (
 // events and patterns randomly selected from a generated corpus.
 func TestRouter(t *testing.T) {
 	var (
+		fast          = false
 		numConsumers  = 1000
 		numForwarders = 4
 		numEvents     = 10000
 
-		r           = NewRouter()
-		wg          = &sync.WaitGroup{}
-		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-		forwarded   uint64
+		r                    = NewRouter()
+		wg                   = &sync.WaitGroup{}
+		ctx, cancel          = context.WithTimeout(context.Background(), 10*time.Second)
+		published, forwarded uint64
 
 		pause = func() {
+			if fast {
+				return
+			}
 			ms := rand.Intn(50)
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 		}
@@ -39,6 +43,8 @@ func TestRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	then := time.Now()
+
 	// Monitor
 
 	wg.Add(1)
@@ -49,14 +55,17 @@ func TestRouter(t *testing.T) {
 				wg.Done()
 				return
 			case <-time.NewTicker(time.Second).C:
-				log.Printf("forwarded %d", atomic.LoadUint64(&forwarded))
+				log.Printf("forwarded %d, published %d",
+					atomic.LoadUint64(&forwarded),
+					atomic.LoadUint64(&published))
+
 			}
 		}
 	}()
 
 	// Forwarders
 	events := append(corpus.MatchingEvents, corpus.OtherEvents...)
-	for i := 0; i < numForwarders; i++ {
+	for i := 0; fast || i < numForwarders; i++ {
 		go func(i int) {
 			f := core.NewFJ(r.m.Matcher)
 
@@ -66,6 +75,7 @@ func TestRouter(t *testing.T) {
 					event := events[rand.Intn(len(events))]
 					if err := r.Route(ctx, f, event); err == nil {
 						// log.Printf("publishing %s", event)
+						atomic.AddUint64(&published, 1)
 						break
 					} else {
 						log.Println(err, event)
@@ -114,5 +124,9 @@ func TestRouter(t *testing.T) {
 
 	wg.Wait()
 
-	log.Printf("total forwarded %d", atomic.LoadUint64(&forwarded))
+	log.Printf("total forwarded %d, published %d in %s",
+		atomic.LoadUint64(&forwarded),
+		atomic.LoadUint64(&published),
+		time.Now().Sub(then))
+
 }
