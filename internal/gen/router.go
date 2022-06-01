@@ -85,8 +85,8 @@ func (r *Router) Route(ctx context.Context, f core.Flattener, event string) erro
 
 	// We won't wait all day.
 	cases = append(cases, reflect.SelectCase{
-		Dir:  reflect.SelectRecv,
-		Chan: reflect.ValueOf(time.NewTimer(r.patience).C),
+		Dir: reflect.SelectRecv,
+		// Chan: // To fill in below.
 	})
 
 	for _, x := range xs {
@@ -97,16 +97,29 @@ func (r *Router) Route(ctx context.Context, f core.Flattener, event string) erro
 		})
 	}
 
+LOOP:
 	for todo := len(xs); 0 < todo; {
+		// Get a new timer.
+		cases[1].Chan = reflect.ValueOf(time.NewTimer(r.patience).C)
+
 		i, _, _ := reflect.Select(cases)
 		switch i {
 		case 0:
 			return context.Canceled
 		case 1:
-			// All of the damn consumers are slow.
-			// Do something?
+			// Timer fired.
+			//
+			// All of the (remaining) damn consumers are
+			// slow.  Do something?  We should probably
+			// terminate those consumers (by closing their
+			// channels).  Make sure our timer is
+			// resonable.
+			for _, c := range cases[2:] {
+				close(c.Chan.Interface().(chan string))
+			}
+			break LOOP
 		default:
-			// Remove that case.
+			// Remove that case and then carry on.
 			cases[i] = cases[len(cases)-1]
 			cases = cases[0 : len(cases)-1]
 			todo--
