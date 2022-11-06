@@ -32,7 +32,7 @@ func run() error {
 		mode             = flag.String("mode", "events", "'patterns', 'events', 'showgen', or 'concurrent'")
 
 		numPropsMin = flag.Int("min-props", 5, "starting minimum number of properties for events")
-		numPropsMax = flag.Int("max-props", 5, "starting maximum number of properties for events")
+		numPropsMax = flag.Int("max-props", 8, "starting maximum number of properties for events")
 
 		events   [][]byte
 		patterns []string
