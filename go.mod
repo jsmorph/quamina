@@ -1,3 +1,4 @@
-module github.com/jsmorph
+module github.com/jsmorph/quamina
 
 go 1.18
+
