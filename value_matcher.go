@@ -50,6 +50,34 @@ func newValueMatcher() *valueMatcher {
 	return &vm
 }
 
+// func EvalMatches(spec string, val []byte) bool {
+// 	spec = strings.Trim(spec, `"`)
+//
+// 	var v any
+// 	if err := json.Unmarshal(val, &v); err != nil {
+// 		return false
+// 	}
+//
+// 	vm := goja.New()
+// 	src := fmt.Sprintf(`(function() { return %s })()`, spec[1:])
+//
+// 	f, err := vm.RunString(src)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	log.Printf("debug RunScript %v %T", f, f)
+// 	var fn func(any) bool
+//
+// 	err = vm.ExportTo(f, &fn)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	x := fn(v)
+// 	log.Printf("debug goja: %v %T, %v %T", f, f, x, x)
+//
+// 	return x
+// }
+
 func (m *valueMatcher) transitionOn(val []byte) []*fieldMatcher {
 	var transitions []*fieldMatcher
 
@@ -57,12 +85,16 @@ func (m *valueMatcher) transitionOn(val []byte) []*fieldMatcher {
 
 	switch {
 	case fields.singletonMatch != nil:
-		// if there's a singleton entry here, we either match the val or we're
-		// done Note: We have to check this first because addTransition might be
-		// busy constructing an automaton, but it's not ready for use yet.  When
-		// it's done it'll zero out the singletonMatch
-		if bytes.Equal(fields.singletonMatch, val) {
+		if hack, has := hasHack(string(fields.singletonMatch)); has && hack.Matches(val) {
 			transitions = append(transitions, fields.singletonTransition)
+		} else {
+			// if there's a singleton entry here, we either match the val or we're
+			// done Note: We have to check this first because addTransition might be
+			// busy constructing an automaton, but it's not ready for use yet.  When
+			// it's done it'll zero out the singletonMatch
+			if bytes.Equal(fields.singletonMatch, val) {
+				transitions = append(transitions, fields.singletonTransition)
+			}
 		}
 		return transitions
 
@@ -213,6 +245,7 @@ func onePrefixStep(val []byte, index int, nextField *fieldMatcher) *smallTable[*
 	} else {
 		nextStep = &dfaStep{table: onePrefixStep(val, index+1, nextField)}
 	}
+
 	return makeSmallDfaTable(nil, []byte{val[index]}, []*dfaStep{nextStep})
 }
 
