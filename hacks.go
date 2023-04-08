@@ -110,6 +110,22 @@ func (h *NumericHack) Matches(val []byte) bool {
 	return matches
 }
 
+func HackPat(pat string) (string, error) {
+	var x any
+	if err := json.Unmarshal([]byte(pat), &x); err != nil {
+		return "", err
+	}
+	y, err := UseHacks(x)
+	if err != nil {
+		return "", err
+	}
+	js, err := niceJSON(y)
+	if err != nil {
+		return "", err
+	}
+	return string(js), nil
+}
+
 func UseHacks(x any) (any, error) {
 	if !EnableHacks {
 		return x, nil
