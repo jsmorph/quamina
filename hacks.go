@@ -3,7 +3,6 @@ package quamina
 import (
 	"bytes"
 	"encoding/json"
-	"log"
 	"strconv"
 	"strings"
 )
@@ -38,16 +37,12 @@ func hasHack(s string) (*Hack, bool) {
 	}
 	js := s[1 : n-1]
 
-	log.Printf("debug hasHack js: %v", js)
-
 	var h Hack
 	if err := json.Unmarshal([]byte(js), &h); err != nil {
-		log.Printf("debug hasHack error js: %s, %s", js, err)
 		return nil, false
 	}
 
 	if err := h.Compile(); err != nil {
-		log.Printf("warning: bad back %#v", h)
 		return nil, false
 	}
 
