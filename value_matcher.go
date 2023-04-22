@@ -2,7 +2,6 @@ package quamina
 
 import (
 	"bytes"
-	"log"
 	"sync/atomic"
 )
 
@@ -31,6 +30,9 @@ type vmFields struct {
 	singletonMatch      []byte
 	singletonTransition *fieldMatcher
 
+	// extensionMatchers collects all predicate-driven matchers
+	// obtained from parsed extension predicates.  That's not a
+	// very clear description.  Sorry.
 	extensionMatchers []*extensionMatcher
 }
 
@@ -64,7 +66,6 @@ func (m *valueMatcher) transitionOn(val []byte) []*fieldMatcher {
 	fields := m.getFields()
 
 	for _, em := range fields.extensionMatchers {
-		log.Printf("debug transitionOn %s", val)
 		if em.Predicate(val) {
 			transitions = append(transitions, em.Transition)
 		}
@@ -121,7 +122,6 @@ func (m *valueMatcher) addTransition(val typedVal) *fieldMatcher {
 
 	switch val.vType {
 	case extensionType:
-		log.Printf("debug addTransition extensionType %s", valBytes)
 		em, err := makeExtensionMatcher(valBytes)
 		if err != nil {
 			panic(err)
