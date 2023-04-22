@@ -224,6 +224,14 @@ func TestExtensionMatching(t *testing.T) {
 	check(`{"needs":1.23e2}`, 1)
 	check(`{"needs":1.24e3}`)
 
+	if q, err = New(); err != nil {
+		t.Fatal(err)
+	}
+
+	add(1, `{"needs":[{"numeric":["~=",1.23456789]}]}`)
+	check(`{"needs":1.234567891}`, 1)
+	check(`{"needs":1.23}`)
+
 }
 
 func TestExtensionImplicit(t *testing.T) {
