@@ -29,7 +29,7 @@ import (
 // carried around when running Quamina functions/methods.  Something
 // like
 //
-// type Cfg struct { PredicateParser, FooMode, BarSwitch }
+// type Cfg struct { PredicateParser, FloatNearMaxDelta, FooMode, BarSwitch }
 //
 // func (cfg *Cfg) NewQ() (Q,error) ...
 var ThePredicateParser PredicateParser
