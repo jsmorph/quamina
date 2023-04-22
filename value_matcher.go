@@ -2,6 +2,7 @@ package quamina
 
 import (
 	"bytes"
+	"log"
 	"sync/atomic"
 )
 
@@ -24,10 +25,13 @@ import (
 type valueMatcher struct {
 	updateable atomic.Value // always contains *vmFields
 }
+
 type vmFields struct {
 	startDfa            *smallTable[*dfaStep]
 	singletonMatch      []byte
 	singletonTransition *fieldMatcher
+
+	extensionMatchers []*extensionMatcher
 }
 
 func (m *valueMatcher) getFields() *vmFields {
@@ -50,10 +54,21 @@ func newValueMatcher() *valueMatcher {
 	return &vm
 }
 
+func (m *valueMatcher) extensionTransitions(val []byte) []*fieldMatcher {
+	return nil
+}
+
 func (m *valueMatcher) transitionOn(val []byte) []*fieldMatcher {
 	var transitions []*fieldMatcher
 
 	fields := m.getFields()
+
+	for _, em := range fields.extensionMatchers {
+		log.Printf("debug transitionOn %s", val)
+		if em.Predicate(val) {
+			transitions = append(transitions, em.Transition)
+		}
+	}
 
 	switch {
 	case fields.singletonMatch != nil:
@@ -64,15 +79,15 @@ func (m *valueMatcher) transitionOn(val []byte) []*fieldMatcher {
 		if bytes.Equal(fields.singletonMatch, val) {
 			transitions = append(transitions, fields.singletonTransition)
 		}
-		return transitions
+		return append(transitions, m.extensionTransitions(val)...)
 
 	case fields.startDfa != nil:
-		return transitionDfa(fields.startDfa, val, transitions)
+		return append(transitionDfa(fields.startDfa, val, transitions), m.extensionTransitions(val)...)
 
 	default:
 		// no dfa, no singleton, nothing to do, this probably can't happen because a flattener
 		// shouldn't preserve a field that hasn't appeared in a pattern
-		return transitions
+		return append(transitions, m.extensionTransitions(val)...)
 	}
 }
 
@@ -103,6 +118,24 @@ func transitionDfa(table *smallTable[*dfaStep], val []byte, transitions []*field
 func (m *valueMatcher) addTransition(val typedVal) *fieldMatcher {
 	valBytes := []byte(val.val)
 	fields := m.getFieldsForUpdate()
+
+	switch val.vType {
+	case extensionType:
+		log.Printf("debug addTransition extensionType %s", valBytes)
+		em, err := makeExtensionMatcher(valBytes)
+		if err != nil {
+			panic(err)
+		}
+		acc := fields.extensionMatchers
+		if acc == nil {
+			acc = make([]*extensionMatcher, 0, 1)
+		}
+		acc = append(acc, em)
+
+		fields.extensionMatchers = acc
+		m.update(fields)
+		return em.Transition
+	}
 
 	// there's already a table, thus an out-degree > 1
 	if fields.startDfa != nil {

@@ -20,6 +20,7 @@ const (
 	shellStyleType
 	anythingButType
 	prefixType
+	extensionType
 )
 
 // typedVal represents the value of a field in a pattern, giving the value and the type of pattern.
@@ -199,6 +200,8 @@ func readSpecialPattern(pb *patternBuild, valsIn []typedVal) (pathVals []typedVa
 		pathVals, err = readShellStyleSpecial(pb, pathVals)
 	case "prefix":
 		pathVals, err = readPrefixSpecial(pb, pathVals)
+	case "extension":
+		pathVals, err = readExtensionSpecial(pb, pathVals)
 	default:
 		err = errors.New("unrecognized in special pattern: " + tt)
 	}
