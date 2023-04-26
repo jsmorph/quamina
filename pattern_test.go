@@ -154,3 +154,34 @@ func TestPatternFromJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestPatternSwitches(t *testing.T) {
+
+	t.Cleanup(EnableAllExtended)
+
+	tf := func(pat string, ok bool, disable ...string) {
+		t.Run(pat, func(t *testing.T) {
+			t.Cleanup(EnableAllExtended)
+			for _, name := range disable {
+				if err := SwitchExtended(name, false); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := patternFromJSON([]byte(pat))
+			if ok {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err == nil {
+					t.Fatal("expected protest")
+				}
+			}
+		})
+	}
+
+	tf(`{"joke":[{"exists":true}]}`, false, "existsTrue")
+	tf(`{"joke":[{"exists":true}]}`, true)
+	tf(`{"joke":[{"prefix":"tacos"}]}`, true)
+	tf(`{"joke":[{"prefix":"tacos"}]}`, false, "prefix")
+}

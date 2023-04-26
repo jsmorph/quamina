@@ -9,6 +9,69 @@ import (
 	"strings"
 )
 
+// disableExtended is a set of switches to disable specific "extended
+// patterns" like 'prefix' and 'shellstyle'.
+//
+// Don't change this value while using the matcher.
+//
+// An true value for (say) disableExtended[prefixType] means that the
+// 'prefix' extended value pattern is not supported.  A offered
+// pattern containing a 'prefix' value contraint will not be accepted.
+//
+// Use SwitchExtended() and EnableAllExtended() from your application
+// to adjust these switch settings.
+//
+// This variable is called "disable" to make the zero (default) value
+// mean that all possible extended value patterns are supported by
+// default (without using an init() function).
+var disableExtended = make([]bool, prefixType+1)
+
+// EnableAllExtended is a shortcut for enabling all possible extended
+// value patterns.
+//
+// Don't call this function while using the matcher.
+func EnableAllExtended() {
+	for i := range disableExtended {
+		disableExtended[i] = false
+	}
+}
+
+// SwitchExtended and turn off or on support for specific extended
+// value patterns.
+//
+// Example: SwitchExtended('shellstyle', false) will turn off support
+// for shell-style value patterns.
+//
+// The special name "*" means "all possible extended value patterns".
+//
+// Don't call this function while using the matcher.
+func SwitchExtended(name string, enable bool) error {
+	switch name {
+	case "existsTrue", "existstrue":
+		disableExtended[existsTrueType] = !enable
+	case "existsFalse", "existsfalse":
+		disableExtended[existsFalseType] = !enable
+	case "exists":
+		disableExtended[existsTrueType] = !enable
+		disableExtended[existsFalseType] = !enable
+	case "shellStyle", "shellstyle":
+		disableExtended[shellStyleType] = !enable
+	case "anythingBut", "anythingbut":
+		disableExtended[anythingButType] = !enable
+	case "prefix":
+		disableExtended[prefixType] = !enable
+	case "*":
+		disableExtended[existsTrueType] = !enable
+		disableExtended[existsFalseType] = !enable
+		disableExtended[shellStyleType] = !enable
+		disableExtended[anythingButType] = !enable
+		disableExtended[prefixType] = !enable
+	default:
+		return fmt.Errorf("unknown extended switch: '%s'", name)
+	}
+	return nil
+}
+
 type valType int
 
 const (
@@ -187,17 +250,17 @@ func readSpecialPattern(pb *patternBuild, valsIn []typedVal) (pathVals []typedVa
 	}
 
 	// tokenizer will throw an error if it's not a string
-	tt := t.(string)
-	switch tt {
-	case "anything-but":
+
+	switch tt := t.(string); {
+	case tt == "anything-but" && !disableExtended[anythingButType]:
 		containsExclusive = tt
 		pathVals, err = readAnythingButSpecial(pb, pathVals)
-	case "exists":
+	case tt == "exists": // disableExtended checked below
 		containsExclusive = tt
 		pathVals, err = readExistsSpecial(pb, pathVals)
-	case "shellstyle":
+	case tt == "shellstyle" && !disableExtended[shellStyleType]:
 		pathVals, err = readShellStyleSpecial(pb, pathVals)
-	case "prefix":
+	case tt == "prefix" && !disableExtended[prefixType]:
 		pathVals, err = readPrefixSpecial(pb, pathVals)
 	default:
 		err = errors.New("unrecognized in special pattern: " + tt)
@@ -237,8 +300,14 @@ func readExistsSpecial(pb *patternBuild, valsIn []typedVal) (pathVals []typedVal
 	switch tt := t.(type) {
 	case bool:
 		if tt {
+			if disableExtended[existsTrueType] {
+				return nil, errors.New("exists: true not supported")
+			}
 			pathVals = append(pathVals, typedVal{vType: existsTrueType})
 		} else {
+			if disableExtended[existsFalseType] {
+				return nil, errors.New("exists: false not supported")
+			}
 			pathVals = append(pathVals, typedVal{vType: existsFalseType})
 		}
 	default:
