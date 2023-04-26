@@ -263,7 +263,7 @@ func readSpecialPattern(pb *patternBuild, valsIn []typedVal) (pathVals []typedVa
 		pathVals, err = readShellStyleSpecial(pb, pathVals)
 	case tt == "prefix" && !disableExtended[prefixType]:
 		pathVals, err = readPrefixSpecial(pb, pathVals)
-	case "extension":
+	case tt == "extension":
 		pathVals, err = readExtensionSpecial(pb, pathVals)
 	default:
 		err = errors.New("unrecognized in special pattern: " + tt)
