@@ -7,7 +7,7 @@ import (
 )
 
 func AddExtendedPattern(q *Quamina, id any, pat string) error {
-	predicateFields := []string{"numeric", "equals-insensitive"}
+	predicateFields := []string{"numeric", "equals-insensitive", "string"}
 	return q.AddPattern(id, UsingExtension(pat, predicateFields...))
 }
 
@@ -22,6 +22,9 @@ func UseStdExtension() error {
 			// Numeric supposedly roughly supports the full
 			// EventBridge "numeric" suite.
 			Numeric []any `json:"numeric,omitempty"`
+
+			// String provides some string comparisons.
+			String []any `json:"string,omitempty"`
 
 			// Weird is a predicate the returns true when given a
 			// string with length of the given value.
@@ -50,6 +53,9 @@ func UseStdExtension() error {
 			if g.Numeric != nil {
 				count++
 			}
+			if g.String != nil {
+				count++
+			}
 			if g.Weird != nil {
 				count++
 			}
@@ -70,6 +76,26 @@ func UseStdExtension() error {
 
 			return func(bs []byte) bool {
 				var x float64
+				if err := json.Unmarshal(bs, &x); err != nil {
+					return false
+				}
+
+				matches, err := nc.Matches(x)
+				if err != nil {
+					return false
+				}
+				return matches
+			}, nil
+		}
+
+		if g.String != nil {
+			nc, err := CompileStringConstraints(g.String)
+			if err != nil {
+				return nil, fmt.Errorf("PredicateParser failed to compile string %s: %w", spec, err)
+			}
+
+			return func(bs []byte) bool {
+				var x string
 				if err := json.Unmarshal(bs, &x); err != nil {
 					return false
 				}
