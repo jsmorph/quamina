@@ -3,6 +3,7 @@ package quamina
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"testing"
 )
@@ -311,5 +312,44 @@ func BenchmarkNumericExtension(b *testing.B) {
 		if _, err := q.MatchesForEvent([]byte(msg)); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func TestNumericLiterals(t *testing.T) {
+	ThePredicateParser = aPredicateParser
+
+	q, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type Pair struct {
+		msg, pat string
+	}
+
+	for _, pair := range []Pair{
+		{`{"likes":[223.45]}`, `{"likes":[2.2345e2]}`},
+		{`{"likes":[223.45]}`, `{"likes":[223.45]}`},
+		// {`{"likes":[2.2345e2]}`, `{"likes":[223.45]}`},
+	} {
+
+		t.Run("", func(t *testing.T) {
+			log.Printf("given pattern %s", pair.pat)
+			p2 := UsingExtension(pair.pat, "numeric")
+
+			log.Printf("parsed pattern %s", p2)
+
+			if err := q.AddPattern(1, p2); err != nil {
+				t.Fatal(err)
+			}
+
+			xs, err := q.MatchesForEvent([]byte(pair.msg))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(xs) == 0 {
+				t.Fatal(xs)
+			}
+		})
 	}
 }
