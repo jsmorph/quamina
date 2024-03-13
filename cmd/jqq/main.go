@@ -16,7 +16,8 @@ import (
 func main() {
 	var (
 		clean    = flag.Bool("clean", false, "do not used hacked Quamina")
-		patterns = flag.String("patterns", `[{"likes":["tacos"]}]`, "pattern")
+		patterns = flag.String("patterns", "", "patterns")
+		pattern  = flag.String("pattern", "", "pattern")
 		mode     = flag.String("mode", "filter", "filter|boolean|invert")
 	)
 
@@ -31,6 +32,17 @@ func main() {
 	q, err := quamina.New()
 	if err != nil {
 		panic(err)
+	}
+
+	if *pattern != "" {
+		if *patterns != "" {
+			panic("given one or the other of -patterns and -pattern")
+		}
+		*patterns = `[` + *pattern + `]`
+	}
+
+	if *patterns == "" {
+		panic("give either -patterns or -pattern")
 	}
 
 	var pats []any
